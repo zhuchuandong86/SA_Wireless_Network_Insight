@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
 
-# 从我们刚刚分离的后端模块导入核心能力
+# 从后端模块导入核心能力
 from core_agent import VisualTelecomAnalyst, sanitize_sql, log_query_action
 
-
+# ==========================================
 # 0. 页面初始化与画图配置
 # ==========================================
 st.set_page_config(
@@ -19,9 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-
-
-# 【重点修改这里】：加入多重备选字体，彻底消灭豆腐块
+# 加入多重备选字体，彻底消灭豆腐块
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'SimSun', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -56,7 +54,7 @@ def create_chart_figure(df, chart_type, title_text):
     
     fig, ax = plt.subplots(figsize=(8, 4.5), dpi=150) 
     
-    # 【高阶视觉 1】：定义你们公司的专属品牌色系 (例如 MTN 黄, 科技蓝, 警示红)
+    # 定义专属品牌色系
     brand_palette = ["#FFC000", "#2F5597", "#C00000", "#70AD47", "#7030A0"]
     
     sns.set_theme(
@@ -81,27 +79,6 @@ def create_chart_figure(df, chart_type, title_text):
             val = p.get_height()
             ax.text(p.get_x() + p.get_width() / 2., val, format_number(val), ha='center', va='bottom', fontsize=9)
 
-    elif chart_type == "dual_axis" and len(df.columns) >= 3:
-        # 【高阶视觉 2】：双轴图 (Combo Chart)
-        y2_col = df.columns[2]
-        # 底部画柱状图 (主 Y 轴)
-        sns.barplot(data=df, x=x_col, y=y_col, ax=ax, alpha=0.85, color=brand_palette[0], label=y_col)
-        
-        # 顶部画折线图 (副 Y 轴)
-        ax2 = ax.twinx()
-        sns.lineplot(data=df, x=x_col, y=y2_col, ax=ax2, color=brand_palette[2], marker="s", linewidth=2.5, label=y2_col)
-        
-        # 优化双轴图的图例和网格
-        ax.grid(False) 
-        ax2.grid(False)
-        ax.set_ylabel(y_col, color=brand_palette[0], fontweight='bold')
-        ax2.set_ylabel(y2_col, color=brand_palette[2], fontweight='bold')
-        
-        # 为折线图添加数字标签
-        for x_val, y2_val in zip(df[x_col], df[y2_col]):
-            ax2.text(x_val, y2_val, format_number(y2_val), ha='center', va='bottom', fontsize=9, color=brand_palette[2])
-   # ... 在 app.py 的 create_chart_figure 函数中增加这段 ...
-
     elif chart_type == "multi_bar" and len(df.columns) >= 3:
         # X轴是第一列(区域)，图例(颜色)是第二列(运营商)，Y轴是第三列(流量数值)
         x_col = df.columns[0]
@@ -120,10 +97,29 @@ def create_chart_figure(df, chart_type, title_text):
             if val > 0: # 避免画空值的标签
                 ax.text(p.get_x() + p.get_width() / 2., val, f'{val:,.1f}', 
                         ha='center', va='bottom', fontsize=8, rotation=45)
-                        
+
+    elif chart_type == "dual_axis" and len(df.columns) >= 3:
+        # 双轴图 (Combo Chart)
+        y2_col = df.columns[2]
+        # 底部画柱状图 (主 Y 轴)
+        sns.barplot(data=df, x=x_col, y=y_col, ax=ax, alpha=0.85, color=brand_palette[0], label=y_col)
+        
+        # 顶部画折线图 (副 Y 轴)
+        ax2 = ax.twinx()
+        sns.lineplot(data=df, x=x_col, y=y2_col, ax=ax2, color=brand_palette[2], marker="s", linewidth=2.5, label=y2_col)
+        
+        # 优化双轴图的图例和网格
+        ax.grid(False) 
+        ax2.grid(False)
+        ax.set_ylabel(y_col, color=brand_palette[0], fontweight='bold')
+        ax2.set_ylabel(y2_col, color=brand_palette[2], fontweight='bold')
+        
+        # 为折线图添加数字标签
+        for x_val, y2_val in zip(df[x_col], df[y2_col]):
+            ax2.text(x_val, y2_val, format_number(y2_val), ha='center', va='bottom', fontsize=9, color=brand_palette[2])
                                  
     elif chart_type == "pie": 
-        # 【高阶视觉 3】：从土气饼图升级为现代商业环形图 (Donut Chart)
+        # 现代商业环形图 (Donut Chart)
         def pie_fmt(pct, allvals):
             absolute = int(np.round(pct/100.*np.sum(allvals)))
             return f"{pct:.1f}%\n({format_number(absolute)})"
@@ -131,7 +127,7 @@ def create_chart_figure(df, chart_type, title_text):
         wedges, texts, autotexts = ax.pie(
             df[y_col], labels=df[x_col], autopct=lambda pct: pie_fmt(pct, df[y_col]), 
             startangle=140, pctdistance=0.85, 
-            wedgeprops=dict(width=0.35, edgecolor='w') # width 参数把它变成了环形图
+            wedgeprops=dict(width=0.35, edgecolor='w') 
         )
         # 居中显示总计数值
         total_val = df[y_col].sum()
@@ -159,11 +155,16 @@ if "messages" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [] 
 
+# 渲染历史对话
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if "dataframe" in msg: st.dataframe(msg["dataframe"], use_container_width=True)
-        if "chart" in msg: st.pyplot(msg["chart"], use_container_width=False)
+        if "dataframe" in msg: 
+            st.dataframe(msg["dataframe"], use_container_width=True)
+        if "comment" in msg and msg["comment"]: 
+            st.caption(f"💡 **备注**：{msg['comment']}")
+        if "chart" in msg: 
+            st.pyplot(msg["chart"], use_container_width=False)
 
 if prompt := st.chat_input("请输入您想查询的业务问题..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -173,19 +174,24 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
         with st.spinner("🧠 正在检索知识库并生成分析计划..."):
             res = agent.run_workflow(prompt, st.session_state.chat_history)
             
-            # 协议解析
+            # 【协议解析升级】：支持 SQL、图表类型、标题、注释 四维提取
             sql_to_execute = ""
             sql_match = re.search(r'```sql\s*(.*?)\s*```', res, re.DOTALL)
             if sql_match: sql_to_execute = sql_match.group(1)
             elif "SQL:" in res: sql_to_execute = [line for line in res.split('\n') if line.startswith('SQL:')][0].replace("SQL:", "").strip().replace("```", "")
                 
             chart_type = "none"
-            chart_match = re.search(r'CHART:\s*(line|bar|pie|none)', res, re.IGNORECASE)
+            chart_match = re.search(r'CHART:\s*(multi_bar|line|bar|pie|dual_axis|none)', res, re.IGNORECASE)
             if chart_match: chart_type = chart_match.group(1).lower()
             
             extracted_title = "数据可视化"
             title_match = re.search(r'TITLE:\s*(.*)', res, re.IGNORECASE)
             if title_match: extracted_title = title_match.group(1).strip()
+            
+            # 解析备注信息
+            extracted_comment = ""
+            comment_match = re.search(r'COMMENT:\s*(.*)', res, re.IGNORECASE)
+            if comment_match: extracted_comment = comment_match.group(1).strip()
 
             if sql_to_execute:
                 max_retries = 3
@@ -200,7 +206,7 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
                             st.session_state.messages.append({"role": "assistant", "content": "⚠️ 结果集为空。"})
                         else:
                             st.success(f"为您提取到 {len(df)} 行相关数据。")
-                            reply_msg = {"role": "assistant", "content": "✅ 分析完成："}
+                            reply_msg = {"role": "assistant", "content": f"✅ 分析完成：**{extracted_title}**"}
                             
                             if chart_type != "none":
                                 fig = create_chart_figure(df, chart_type, extracted_title)
@@ -208,8 +214,13 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
                                     st.pyplot(fig, use_container_width=False)
                                     reply_msg["chart"] = fig
                             
+                            # 渲染数据表格和底部注释
                             st.dataframe(df, use_container_width=True)
+                            if extracted_comment:
+                                st.caption(f"💡 **备注**：{extracted_comment}")
+                                
                             reply_msg["dataframe"] = df
+                            reply_msg["comment"] = extracted_comment
                             st.session_state.messages.append(reply_msg)
                             
                             csv_data = df.to_csv(index=False).encode('utf-8-sig')
@@ -234,10 +245,12 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
                             
                             sql_match = re.search(r'```sql\s*(.*?)\s*```', res, re.DOTALL)
                             sql_to_execute = sql_match.group(1) if sql_match else res.split('\n')[0].replace("SQL:", "").strip()
-                            chart_match = re.search(r'CHART:\s*(line|bar|pie|none)', res, re.IGNORECASE)
+                            chart_match = re.search(r'CHART:\s*(multi_bar|line|bar|pie|dual_axis|none)', res, re.IGNORECASE)
                             if chart_match: chart_type = chart_match.group(1).lower()
                             title_match = re.search(r'TITLE:\s*(.*)', res, re.IGNORECASE)
                             if title_match: extracted_title = title_match.group(1).strip()
+                            comment_match = re.search(r'COMMENT:\s*(.*)', res, re.IGNORECASE)
+                            if comment_match: extracted_comment = comment_match.group(1).strip()
                         else:
                             st.error("由于数据结构复杂，AI 多次尝试仍未完美匹配。")
                             log_query_action(prompt, sql_to_execute, "FAILED", error_msg)
