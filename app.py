@@ -10,7 +10,7 @@ import streamlit as st
 from core_agent import VisualTelecomAnalyst, sanitize_sql, log_query_action
 
 # ==========================================
-# 0. 页面初始化与画图配置
+# 0. 页面初始化、画图配置与【密码网关】
 # ==========================================
 st.set_page_config(
     page_title="南非运营商无线网络数据洞察 AI",
@@ -18,6 +18,46 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# 【新增】：在这里设置你的访问密码
+ACCESS_PASSWORD = "888888" 
+
+def check_password():
+    """验证密码的安全拦截器"""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    # 如果尚未认证，显示登录界面并拦截后续代码
+    if not st.session_state.authenticated:
+        # 画一个简单的居中登录框
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.write("")
+            st.write("")
+            st.title("🔒 内部数据洞察系统")
+            st.markdown("该系统包含敏感商业数据，请验证权限。")
+            
+            with st.form("login_form"):
+                pwd = st.text_input("🔑 请输入访问密码", type="password")
+                submitted = st.form_submit_button("登 录", use_container_width=True)
+                
+                if submitted:
+                    if pwd == ACCESS_PASSWORD:
+                        st.session_state.authenticated = True
+                        st.rerun() # 密码正确，重新加载页面，放行后续代码
+                    else:
+                        st.error("❌ 密码错误，请重新输入或联系管理员！")
+        return False
+    return True
+
+# 【执行拦截】：如果没登录，程序到这里就强制停止，绝对安全！
+if not check_password():
+    st.stop()
+
+
+# ==========================================
+# (认证通过后才执行以下所有核心逻辑)
+# ==========================================
 
 # 加入多重备选字体，彻底消灭豆腐块
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'SimSun', 'Arial Unicode MS']
@@ -47,7 +87,6 @@ def format_number(val, is_pct=False):
         if pd.isna(v): return ""
         
         if is_pct:
-            # 如果是纯小数(如 0.07)，自动乘100；如果是数据库里已经乘过100的(如 7.5)，直接加%
             if abs(v) <= 2.0: 
                 return f"{v * 100:.2f}%"
             return f"{v:.2f}%"
@@ -74,7 +113,6 @@ def create_chart_figure(df, chart_type, title_text):
     x_col = df.columns[0]
     y_col = df.columns[1]
     
-    # 嗅探当前的主 Y 轴是不是百分比
     y_is_pct = is_pct_col(y_col)
     
     if chart_type == "line": 
@@ -90,7 +128,7 @@ def create_chart_figure(df, chart_type, title_text):
 
     elif chart_type == "multi_bar" and len(df.columns) >= 3:
         x_col, hue_col, y_col = df.columns[0], df.columns[1], df.columns[2]
-        y_is_pct = is_pct_col(y_col) # 重新嗅探第三列
+        y_is_pct = is_pct_col(y_col) 
         
         sns.barplot(data=df, x=x_col, y=y_col, hue=hue_col, ax=ax, palette="muted")
         ax.legend(title=hue_col, bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -103,7 +141,7 @@ def create_chart_figure(df, chart_type, title_text):
 
     elif chart_type == "dual_axis" and len(df.columns) >= 3:
         y2_col = df.columns[2]
-        y2_is_pct = is_pct_col(y2_col) # 嗅探副 Y 轴是不是百分比
+        y2_is_pct = is_pct_col(y2_col) 
         
         sns.barplot(data=df, x=x_col, y=y_col, ax=ax, alpha=0.85, color=brand_palette[0], label=y_col)
         ax2 = ax.twinx()
@@ -143,7 +181,15 @@ def create_chart_figure(df, chart_type, title_text):
 # ==========================================
 # 3. Web 交互主程序
 # ==========================================
-st.title("📡 南非运营商无线网络数据洞察 AI 助手")
+# 添加注销按钮 (可选功能，方便你在测试时退出登录)
+colA, colB = st.columns([9, 1])
+with colA:
+    st.title("📡 南非运营商无线网络数据洞察 AI 助手")
+with colB:
+    if st.button("退出登录"):
+        st.session_state.authenticated = False
+        st.rerun()
+
 st.markdown("直接用自然语言查询您的业务数据。支持自动绘图、一键导出。")
 
 if "messages" not in st.session_state:
@@ -156,7 +202,6 @@ for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if "dataframe" in msg: 
-            # 应用格式化 (如果找到了率/比之类的列)
             format_mapping = {col: (lambda x: format_number(x, is_pct=True)) for col in msg["dataframe"].columns if is_pct_col(col)}
             display_df = msg["dataframe"].style.format(format_mapping) if format_mapping else msg["dataframe"]
             st.dataframe(display_df, use_container_width=True)
@@ -166,13 +211,10 @@ for i, msg in enumerate(st.session_state.messages):
         if "chart" in msg: 
             st.pyplot(msg["chart"], use_container_width=False)
 
-        # =========================================
-        # 【新增】：为 AI 的正式查询结果添加赞/踩按钮
-        # =========================================
+        # 渲染点赞/点踩按钮
         if msg["role"] == "assistant" and "sql" in msg:
-            col1, col2, _ = st.columns([1, 1, 8]) # 控制按钮宽度
+            col1, col2, _ = st.columns([1, 1, 8]) 
             with col1:
-                # key 必须是唯一的，所以带上消息索引 i
                 if st.button("👍 准确", key=f"up_{i}"):
                     log_query_action(msg["prompt"], msg["sql"], "FEEDBACK_GOOD", "用户点赞")
                     st.toast("✅ 感谢您的反馈！系统已记录。")
@@ -189,7 +231,6 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
         with st.spinner("🧠 正在检索知识库并生成分析计划..."):
             res = agent.run_workflow(prompt, st.session_state.chat_history)
             
-            # 【协议解析升级】：支持 SQL、图表类型、标题、注释 四维提取
             sql_to_execute = ""
             sql_match = re.search(r'```sql\s*(.*?)\s*```', res, re.DOTALL)
             if sql_match: sql_to_execute = sql_match.group(1)
@@ -203,7 +244,6 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
             title_match = re.search(r'TITLE:\s*(.*)', res, re.IGNORECASE)
             if title_match: extracted_title = title_match.group(1).strip()
             
-            # 解析备注信息
             extracted_comment = ""
             comment_match = re.search(r'COMMENT:\s*(.*)', res, re.IGNORECASE)
             if comment_match: extracted_comment = comment_match.group(1).strip()
@@ -213,7 +253,7 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
                 for attempt in range(max_retries):
                     try:
                         safe_sql = sanitize_sql(sql_to_execute)
-                        df = agent.con.execute(safe_sql).df() # 通过后端的 con 查库
+                        df = agent.con.execute(safe_sql).df() 
                         
                         if df.empty:
                             st.warning("查询执行成功，但结果集为空。")
@@ -229,28 +269,19 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
                                     st.pyplot(fig, use_container_width=False)
                                     reply_msg["chart"] = fig
                             
-                                # 渲染数据表格和底部注释
-                                # 【高级格式化】：让表格里的百分比列也漂亮地带上 %
-                                format_mapping = {}
-                                for col in df.columns:
-                                    if is_pct_col(col):
-                                        # 针对 Streamlit DataFrame 专门构造 lambda 渲染器
-                                        format_mapping[col] = lambda x: format_number(x, is_pct=True)
+                            format_mapping = {}
+                            for col in df.columns:
+                                if is_pct_col(col):
+                                    format_mapping[col] = lambda x: format_number(x, is_pct=True)
 
-                                # 应用格式化 (如果找到了率/比之类的列)
-                                display_df = df.style.format(format_mapping) if format_mapping else df
+                            display_df = df.style.format(format_mapping) if format_mapping else df
+                            st.dataframe(display_df, use_container_width=True)
 
-                                st.dataframe(display_df, use_container_width=True)
-
-                                if extracted_comment:
-                                    st.caption(f"💡 **备注**：{extracted_comment}")
+                            if extracted_comment:
+                                st.caption(f"💡 **备注**：{extracted_comment}")
                                 
                             reply_msg["dataframe"] = df
                             reply_msg["comment"] = extracted_comment
-                            
-                            # =========================================
-                            # 【新增】：把原问题和生成的SQL存入字典，供点赞按钮使用
-                            # =========================================
                             reply_msg["prompt"] = prompt
                             reply_msg["sql"] = safe_sql
                             
@@ -260,6 +291,18 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
                             st.download_button("📥 下载数据 (CSV)", data=csv_data, file_name=f"{extracted_title}.csv", mime='text/csv')
 
                             log_query_action(prompt, safe_sql, "SUCCESS")
+                            
+                            # 在当次生成的实时画面中，也渲染赞/踩按钮
+                            current_idx = len(st.session_state.messages) - 1
+                            col1, col2, _ = st.columns([1, 1, 8])
+                            with col1:
+                                if st.button("👍 准确", key=f"up_{current_idx}"):
+                                    log_query_action(prompt, safe_sql, "FEEDBACK_GOOD", "用户点赞")
+                                    st.toast("✅ 感谢您的反馈！系统已记录。")
+                            with col2:
+                                if st.button("👎 报错/不准", key=f"down_{current_idx}"):
+                                    log_query_action(prompt, safe_sql, "FEEDBACK_BAD", "用户点踩")
+                                    st.toast("🔧 已将此问题打回错题本，我们将尽快优化！")
                             
                         st.session_state.chat_history = []
                         break
