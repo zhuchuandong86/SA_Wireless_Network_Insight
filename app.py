@@ -40,96 +40,92 @@ agent = get_agent()
 # ==========================================
 # 2. 纯粹的前端可视化函数
 # ==========================================
-def format_number(val):
+def format_number(val, is_pct=False):
+    """升级版：支持智能百分比格式化"""
     try:
         v = float(val)
         if pd.isna(v): return ""
+        
+        if is_pct:
+            # 如果是纯小数(如 0.07)，自动乘100；如果是数据库里已经乘过100的(如 7.5)，直接加%
+            if abs(v) <= 2.0: 
+                return f"{v * 100:.2f}%"
+            return f"{v:.2f}%"
+            
         if v.is_integer() or abs(v) >= 1000: return f"{int(v):,}"
         return f"{v:,.2f}"
     except:
         return str(val)
 
+def is_pct_col(col_name):
+    """智能嗅探：根据列名判断是否应该显示为百分比"""
+    return any(kw in str(col_name) for kw in ['率', '比', '%', '占比', '份额'])
+
+
 def create_chart_figure(df, chart_type, title_text):
     if df.empty or len(df.columns) < 2: return None
     
     fig, ax = plt.subplots(figsize=(8, 4.5), dpi=150) 
-    
-    # 定义专属品牌色系
     brand_palette = ["#FFC000", "#2F5597", "#C00000", "#70AD47", "#7030A0"]
     
-    sns.set_theme(
-        style="whitegrid", 
-        rc={"font.sans-serif": plt.rcParams['font.sans-serif']},
-        font_scale=0.9  
-    )
-    # 应用自定义色板
+    sns.set_theme(style="whitegrid", rc={"font.sans-serif": plt.rcParams['font.sans-serif']}, font_scale=0.9)
     sns.set_palette(sns.color_palette(brand_palette))
     
     x_col = df.columns[0]
     y_col = df.columns[1]
     
+    # 嗅探当前的主 Y 轴是不是百分比
+    y_is_pct = is_pct_col(y_col)
+    
     if chart_type == "line": 
         sns.lineplot(data=df, x=x_col, y=y_col, marker="o", linewidth=3, ax=ax)
         for x_val, y_val in zip(df[x_col], df[y_col]):
-            ax.text(x_val, y_val, format_number(y_val), ha='center', va='bottom', fontsize=9, color='#1F3864', fontweight='bold')
+            ax.text(x_val, y_val, format_number(y_val, y_is_pct), ha='center', va='bottom', fontsize=9, color='#1F3864', fontweight='bold')
             
     elif chart_type == "bar": 
         sns.barplot(data=df, x=x_col, y=y_col, ax=ax)
         for p in ax.patches:
             val = p.get_height()
-            ax.text(p.get_x() + p.get_width() / 2., val, format_number(val), ha='center', va='bottom', fontsize=9)
+            ax.text(p.get_x() + p.get_width() / 2., val, format_number(val, y_is_pct), ha='center', va='bottom', fontsize=9)
 
     elif chart_type == "multi_bar" and len(df.columns) >= 3:
-        # X轴是第一列(区域)，图例(颜色)是第二列(运营商)，Y轴是第三列(流量数值)
-        x_col = df.columns[0]
-        hue_col = df.columns[1]
-        y_col = df.columns[2]
+        x_col, hue_col, y_col = df.columns[0], df.columns[1], df.columns[2]
+        y_is_pct = is_pct_col(y_col) # 重新嗅探第三列
         
-        # 使用 seaborn 的 hue 参数自动生成多对比柱状图
         sns.barplot(data=df, x=x_col, y=y_col, hue=hue_col, ax=ax, palette="muted")
-        
-        # 优化图例显示
         ax.legend(title=hue_col, bbox_to_anchor=(1.05, 1), loc='upper left')
         
-        # 为每根柱子加上数字标签 (如果柱子太多，数字可能拥挤，视情况保留)
         for p in ax.patches:
             val = p.get_height()
-            if val > 0: # 避免画空值的标签
-                ax.text(p.get_x() + p.get_width() / 2., val, f'{val:,.1f}', 
+            if val > 0: 
+                ax.text(p.get_x() + p.get_width() / 2., val, format_number(val, y_is_pct), 
                         ha='center', va='bottom', fontsize=8, rotation=45)
 
     elif chart_type == "dual_axis" and len(df.columns) >= 3:
-        # 双轴图 (Combo Chart)
         y2_col = df.columns[2]
-        # 底部画柱状图 (主 Y 轴)
-        sns.barplot(data=df, x=x_col, y=y_col, ax=ax, alpha=0.85, color=brand_palette[0], label=y_col)
+        y2_is_pct = is_pct_col(y2_col) # 嗅探副 Y 轴是不是百分比
         
-        # 顶部画折线图 (副 Y 轴)
+        sns.barplot(data=df, x=x_col, y=y_col, ax=ax, alpha=0.85, color=brand_palette[0], label=y_col)
         ax2 = ax.twinx()
         sns.lineplot(data=df, x=x_col, y=y2_col, ax=ax2, color=brand_palette[2], marker="s", linewidth=2.5, label=y2_col)
         
-        # 优化双轴图的图例和网格
         ax.grid(False) 
         ax2.grid(False)
         ax.set_ylabel(y_col, color=brand_palette[0], fontweight='bold')
         ax2.set_ylabel(y2_col, color=brand_palette[2], fontweight='bold')
         
-        # 为折线图添加数字标签
         for x_val, y2_val in zip(df[x_col], df[y2_col]):
-            ax2.text(x_val, y2_val, format_number(y2_val), ha='center', va='bottom', fontsize=9, color=brand_palette[2])
+            ax2.text(x_val, y2_val, format_number(y2_val, y2_is_pct), ha='center', va='bottom', fontsize=9, color=brand_palette[2])
                                  
     elif chart_type == "pie": 
-        # 现代商业环形图 (Donut Chart)
         def pie_fmt(pct, allvals):
             absolute = int(np.round(pct/100.*np.sum(allvals)))
             return f"{pct:.1f}%\n({format_number(absolute)})"
             
         wedges, texts, autotexts = ax.pie(
             df[y_col], labels=df[x_col], autopct=lambda pct: pie_fmt(pct, df[y_col]), 
-            startangle=140, pctdistance=0.85, 
-            wedgeprops=dict(width=0.35, edgecolor='w') 
+            startangle=140, pctdistance=0.85, wedgeprops=dict(width=0.35, edgecolor='w') 
         )
-        # 居中显示总计数值
         total_val = df[y_col].sum()
         ax.text(0, 0, f"总计\n{format_number(total_val)}", ha='center', va='center', fontsize=12, fontweight='bold')
         
@@ -156,15 +152,34 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = [] 
 
 # 渲染历史对话
-for msg in st.session_state.messages:
+for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if "dataframe" in msg: 
-            st.dataframe(msg["dataframe"], use_container_width=True)
+            # 应用格式化 (如果找到了率/比之类的列)
+            format_mapping = {col: (lambda x: format_number(x, is_pct=True)) for col in msg["dataframe"].columns if is_pct_col(col)}
+            display_df = msg["dataframe"].style.format(format_mapping) if format_mapping else msg["dataframe"]
+            st.dataframe(display_df, use_container_width=True)
+            
         if "comment" in msg and msg["comment"]: 
             st.caption(f"💡 **备注**：{msg['comment']}")
         if "chart" in msg: 
             st.pyplot(msg["chart"], use_container_width=False)
+
+        # =========================================
+        # 【新增】：为 AI 的正式查询结果添加赞/踩按钮
+        # =========================================
+        if msg["role"] == "assistant" and "sql" in msg:
+            col1, col2, _ = st.columns([1, 1, 8]) # 控制按钮宽度
+            with col1:
+                # key 必须是唯一的，所以带上消息索引 i
+                if st.button("👍 准确", key=f"up_{i}"):
+                    log_query_action(msg["prompt"], msg["sql"], "FEEDBACK_GOOD", "用户点赞")
+                    st.toast("✅ 感谢您的反馈！系统已记录。")
+            with col2:
+                if st.button("👎 报错/不准", key=f"down_{i}"):
+                    log_query_action(msg["prompt"], msg["sql"], "FEEDBACK_BAD", "用户点踩")
+                    st.toast("🔧 已将此问题打回错题本，我们将尽快优化！")
 
 if prompt := st.chat_input("请输入您想查询的业务问题..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -214,13 +229,31 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
                                     st.pyplot(fig, use_container_width=False)
                                     reply_msg["chart"] = fig
                             
-                            # 渲染数据表格和底部注释
-                            st.dataframe(df, use_container_width=True)
-                            if extracted_comment:
-                                st.caption(f"💡 **备注**：{extracted_comment}")
+                                # 渲染数据表格和底部注释
+                                # 【高级格式化】：让表格里的百分比列也漂亮地带上 %
+                                format_mapping = {}
+                                for col in df.columns:
+                                    if is_pct_col(col):
+                                        # 针对 Streamlit DataFrame 专门构造 lambda 渲染器
+                                        format_mapping[col] = lambda x: format_number(x, is_pct=True)
+
+                                # 应用格式化 (如果找到了率/比之类的列)
+                                display_df = df.style.format(format_mapping) if format_mapping else df
+
+                                st.dataframe(display_df, use_container_width=True)
+
+                                if extracted_comment:
+                                    st.caption(f"💡 **备注**：{extracted_comment}")
                                 
                             reply_msg["dataframe"] = df
                             reply_msg["comment"] = extracted_comment
+                            
+                            # =========================================
+                            # 【新增】：把原问题和生成的SQL存入字典，供点赞按钮使用
+                            # =========================================
+                            reply_msg["prompt"] = prompt
+                            reply_msg["sql"] = safe_sql
+                            
                             st.session_state.messages.append(reply_msg)
                             
                             csv_data = df.to_csv(index=False).encode('utf-8-sig')
