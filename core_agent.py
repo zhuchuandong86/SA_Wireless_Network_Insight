@@ -18,9 +18,9 @@ from langchain_core.embeddings import Embeddings
 # ==========================================
 # 1. 核心配置与常量
 # ==========================================
-os.environ['NO_PROXY'] =  '内网'
-INTERNAL_API_BASE = "内网v1"  # 你的大模型基础 URL
-INTERNAL_API_KEY =  "内网" # 你的大模型 KEY
+os.environ['NO_PROXY'] =  'XXXX'
+INTERNAL_API_BASE = "XXXX"  # 你的大模型基础 URL
+INTERNAL_API_KEY =  "XXXX" # 你的大模型 KEY
 
 # 【新增】：内网 Embedding 模型的配置
 # 如果内网 Embedding 接口和大模型是同一个地址，直接沿用即可；如果不同，请替换！
@@ -147,9 +147,28 @@ class VisualTelecomAnalyst:
             best_examples += f"[案例 {i+1}]\n问题: {doc.page_content}\nSQL: {doc.metadata['sql']}\n\n"
         return best_examples.strip()
 
+    def get_latest_table(self, prefix="join_all_kpi_table_region"):
+        """扫描数据库，找到日期后缀最大的表名"""
+        try:
+            # 获取所有表名
+            tables = self.con.execute("SHOW TABLES").df()['name'].tolist()
+            # 筛选出符合前缀的表，并提取最后的数字进行排序
+            target_tables = [t for t in tables if t.startswith(prefix)]
+            if not target_tables:
+                return prefix + "202510"  # 如果没找到，返回一个默认值
+            
+            # 按名称排序，取最后一个（例如 202511 会排在 202510 后面）
+            latest_table = sorted(target_tables)[-1]
+            return latest_table
+        except Exception:
+            return prefix + "202510"
+
     def run_workflow(self, user_query, history=[]):
         current_schema = self.get_real_schema()
         few_shot_examples = self.retrieve_golden_sqls(user_query)
+        
+        # 【新增】：获取最新的 KPI 表名
+        latest_kpi_table = self.get_latest_table()
         
         # 包含了之前刚刚为你优化的 多维对比规则 和 并排查询规则
         system_prompt = f"""
@@ -162,7 +181,7 @@ class VisualTelecomAnalyst:
             2. **消灭反问与多维展示**：极力避免向用户反问！当问题存在指标歧义（如“利用率”包含4G和5G）时，**必须在同一个 SELECT 语句中同时查询这两个字段作为并排的多列展示**（例如 `SELECT AVG(4G), AVG(5G)`），**绝对禁止**使用 UNION ALL 将不同指标的列上下拼接！
             3. **多维对比铁律**：当用户要求对比多个对象（例如：MTN/VDC/Telkom各区域流量对比）时，你的SQL**必须严格返回3列**：第1列为X轴维度（如区域），第2列为图例分组（如Operator），第3列为数值（如总流量）。
             4. **DuckDB 铁律**：日期列严禁使用 LIKE，请用 EXTRACT(YEAR FROM "列")。所有别名必须用双引号 `""`。
-            5. 如用户提问中有趋势、对比、图表等，要画出图表。
+            5. 如用户提问中有趋势、对比、图表等，要画出图表；但是数据很简单的时候不用输出图表。
             6. 当用户不明确提出时间时，默认采用最近12个月或者最新一个月）； 输出数据注释（精准提取查询所用的时间和表名），格式为 `COMMENT: 数据来源：<引用的核心表名> | 时间范围：<提取用户查询的年份或月份>`。
             7、当查不到数据的时候，不要瞎编，直接承认无相关数据；
             
