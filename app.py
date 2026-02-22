@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 # 【新增】：在这里设置你的访问密码
-ACCESS_PASSWORD = "888888" 
+ACCESS_PASSWORD = "2222" 
 
 def check_password():
     """验证密码的安全拦截器"""
@@ -340,3 +340,6 @@ if prompt := st.chat_input("请输入您想查询的业务问题..."):
                 st.session_state.chat_history.append({"role": "assistant", "content": res})
                 if len(st.session_state.chat_history) > 6:
                     st.session_state.chat_history = st.session_state.chat_history[-6:]
+
+
+#streamlit run app.py
