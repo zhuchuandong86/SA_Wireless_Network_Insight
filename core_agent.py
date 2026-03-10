@@ -18,7 +18,6 @@ from langchain_core.embeddings import Embeddings
 # ==========================================
 # 1. 核心配置与常量
 # ==========================================
-os.environ['NO_PROXY'] =  'api.openai.rnd.huawei.com'
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -30,7 +29,7 @@ INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "未配置API_KEY")
 # 如果内网 Embedding 接口和大模型是同一个地址，直接沿用即可；如果不同，请替换！
 EMBEDDING_API_BASE = INTERNAL_API_BASE 
 EMBEDDING_API_KEY = INTERNAL_API_KEY   
-EMBEDDING_MODEL_NAME = "bge-m3"  # 请确认你们内网 Embedding 模型的调用名称
+EMBEDDING_MODEL_NAME = "bge-m3"  #
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "telecom_data.duckdb")
@@ -198,7 +197,7 @@ class VisualTelecomAnalyst:
             3. **多维对比铁律**：当用户要求对比多个对象（例如：MTN/VDC/Telkom各区域流量对比）时，你的SQL**必须严格返回3列**：第1列为X轴维度（如区域），第2列为图例分组（如Operator），第3列为数值（如总流量）。
             4. **DuckDB 铁律**：日期列严禁使用 LIKE，请用 EXTRACT(YEAR FROM "列")。所有别名必须用双引号 `""`。
             5. 如用户提问中有趋势、对比、图表等，要画出图表；如果用户明确了图表类型和格式，则严格按照用户需求输出。
-            6. 当用户不明确提出时间时，默认采用最近12个月；
+            6. 当用户不明确提出时间时，默认采用最近12个月，按照时间降序；
             7、当查不到数据的时候，不要瞎编，直接承认无相关数据；
             8、除非用户指定业务流量（如视频流量等），则优先使用整体流量。
             
